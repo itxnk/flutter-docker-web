@@ -1,7 +1,46 @@
 services:
   flutter-web:
     build: .
-    container_name: flutter-web
+    container_name: footwear-web
     ports:
       - "8080:80"
+    depends_on:
+      backend:
+        condition: service_started
     restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: footwear-api
+    environment:
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: footwear
+      DB_USER: footwear
+      DB_PASSWORD: footwear_dev_password
+      JWT_SECRET: local-development-secret-change-me
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: footwear-db
+    environment:
+      POSTGRES_DB: footwear
+      POSTGRES_USER: footwear
+      POSTGRES_PASSWORD: footwear_dev_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U footwear -d footwear"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

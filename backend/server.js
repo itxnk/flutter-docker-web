@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'postgres',
@@ -15,19 +15,34 @@ const pool = new Pool({
 });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-before-production';
+const MERCHANT_NUMBER = process.env.MERCHANT_NUMBER || '03420954886';
+const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || '923420954886';
 
 app.get('/api/health', async (_, res) => {
   try {
     await pool.query('SELECT 1');
     res.json({ status: 'ok', database: 'connected' });
-  } catch (error) {
+  } catch (_) {
     res.status(503).json({ status: 'error', database: 'unavailable' });
   }
 });
 
+app.get('/api/config', (_, res) => {
+  res.json({
+    whatsappNumber: '03420954886',
+    whatsappUrl: `https://wa.me/${WHATSAPP_NUMBER}`,
+    jazzcashNumber: MERCHANT_NUMBER,
+    easypaisaNumber: MERCHANT_NUMBER,
+  });
+});
+
 app.get('/api/products', async (_, res) => {
-  const { rows } = await pool.query('SELECT * FROM products ORDER BY id');
-  res.json(rows);
+  try {
+    const { rows } = await pool.query('SELECT * FROM products ORDER BY id');
+    res.json(rows);
+  } catch (_) {
+    res.status(500).json({ error: 'Could not load products' });
+  }
 });
 
 app.post('/api/auth/register', async (req, res) => {
@@ -97,24 +112,46 @@ app.post('/api/orders', auth, async (req, res) => {
         [order.rows[0].id, item.product_id, item.quantity, item.unit_price]
       );
     }
+    if (payment_method !== 'cod') {
+      await client.query(
+        'INSERT INTO payment_transactions(order_id,user_id,method,amount,merchant_number,status) VALUES($1,$2,$3,$4,$5,$6)',
+        [order.rows[0].id, req.user.userId, payment_method, total, MERCHANT_NUMBER, 'awaiting_customer_payment']
+      );
+    }
     await client.query('COMMIT');
-    res.status(201).json(order.rows[0]);
+    res.status(201).json({ ...order.rows[0], merchant_number: MERCHANT_NUMBER, whatsapp: '03420954886' });
   } catch (error) {
     await client.query('ROLLBACK');
+    console.error(error);
     res.status(500).json({ error: 'Could not create order' });
   } finally {
     client.release();
   }
 });
 
-app.post('/api/payments/create', auth, (req, res) => {
-  const { method } = req.body;
-  if (!['jazzcash', 'easypaisa', 'cod'].includes(method)) return res.status(400).json({ error: 'Unsupported payment method' });
-  res.json({
-    status: 'sandbox_pending',
-    method,
-    message: 'Payment gateway credentials are not configured yet. Connect merchant sandbox credentials before accepting real payments.'
-  });
+app.post('/api/payments/create', auth, async (req, res) => {
+  const { order_id, method, amount, transaction_reference } = req.body;
+  if (!order_id || !amount || !['jazzcash', 'easypaisa', 'cod'].includes(method)) {
+    return res.status(400).json({ error: 'order_id, amount and a supported method are required' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO payment_transactions(order_id,user_id,method,amount,merchant_number,transaction_reference,status)
+       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [order_id, req.user.userId, method, amount, MERCHANT_NUMBER, transaction_reference || null, 'pending_verification']
+    );
+    res.status(201).json({ ...rows[0], message: 'Payment record created. Real gateway verification requires your merchant API credentials.' });
+  } catch (_) {
+    res.status(500).json({ error: 'Could not create payment transaction' });
+  }
+});
+
+app.get('/api/orders/:id', auth, async (req, res) => {
+  const order = await pool.query('SELECT * FROM orders WHERE id=$1 AND user_id=$2', [req.params.id, req.user.userId]);
+  if (!order.rows[0]) return res.status(404).json({ error: 'Order not found' });
+  const items = await pool.query('SELECT oi.*, p.name, p.image FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1', [req.params.id]);
+  const payments = await pool.query('SELECT id,method,amount,transaction_reference,status,created_at FROM payment_transactions WHERE order_id=$1 ORDER BY created_at DESC', [req.params.id]);
+  res.json({ ...order.rows[0], items: items.rows, payments: payments.rows });
 });
 
 const port = Number(process.env.PORT || 3000);

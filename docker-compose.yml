@@ -20,6 +20,8 @@ services:
       DB_USER: footwear
       DB_PASSWORD: footwear_dev_password
       JWT_SECRET: local-development-secret-change-me
+      WHATSAPP_NUMBER: 923420954886
+      MERCHANT_NUMBER: 03420954886
     depends_on:
       postgres:
         condition: service_healthy

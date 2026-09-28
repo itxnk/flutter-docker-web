@@ -147,3 +147,73 @@ class _StoreState extends State<Store>{
  }
 }
 
+
+class _PaymentsTab extends StatefulWidget {
+  final String token;
+  const _PaymentsTab({required this.token});
+
+  @override
+  State<_PaymentsTab> createState() => _PaymentsTabState();
+}
+
+class _PaymentsTabState extends State<_PaymentsTab> {
+  bool loading = true;
+  List<dynamic> payments = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadPayments();
+  }
+
+  Future<void> loadPayments() async {
+    if (widget.token.isEmpty) {
+      setState(() => loading = false);
+      return;
+    }
+    try {
+      final response = await http.get(
+        Uri.parse('/api/payments/history'),
+        headers: {'Authorization': 'Bearer ${widget.token}'},
+      );
+      if (response.statusCode == 200) {
+        payments = jsonDecode(response.body) as List;
+      }
+    } catch (_) {}
+    if (mounted) setState(() => loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (payments.isEmpty) {
+      return const Center(child: Text('No payment transactions yet.'));
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.all(22),
+      itemCount: payments.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, index) {
+        final payment = Map<String, dynamic>.from(payments[index]);
+        return Card(
+          elevation: 0,
+          child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.payments_outlined)),
+            title: Text(
+              '${payment['method']} • Order #${payment['order_id']}',
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text(
+              '${payment['status']}'
+              '${payment['transaction_reference'] == null ? '' : ' • Ref: ${payment['transaction_reference']}'}',
+            ),
+            trailing: Text(
+              'Rs. ${payment['amount']}',
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}

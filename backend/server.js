@@ -95,35 +95,75 @@ app.get('/api/orders', auth, async (req, res) => {
 });
 
 app.post('/api/orders', auth, async (req, res) => {
-  const { items, total, payment_method = 'cod', shipping_address } = req.body;
-  if (!Array.isArray(items) || !items.length || !total || !shipping_address) {
-    return res.status(400).json({ error: 'items, total and shipping_address are required' });
+  const { items, payment_method = 'cod', shipping_address } = req.body;
+  if (!Array.isArray(items) || !items.length || !shipping_address) {
+    return res.status(400).json({ error: 'items and shipping_address are required' });
   }
+  if (!['cod', 'jazzcash', 'easypaisa'].includes(payment_method)) {
+    return res.status(400).json({ error: 'Unsupported payment method' });
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    const ids = items.map((item) => Number(item.product_id));
+    const uniqueIds = [...new Set(ids)];
+    const result = await client.query(
+      'SELECT id,name,price,stock FROM products WHERE id = ANY($1::int[]) FOR UPDATE',
+      [uniqueIds]
+    );
+    const products = new Map(result.rows.map((row) => [row.id, row]));
+
+    let total = 0;
+    const normalized = [];
+
+    for (const item of items) {
+      const product = products.get(Number(item.product_id));
+      const quantity = Number(item.quantity);
+
+      if (!product) throw new Error('Product not found');
+      if (!Number.isInteger(quantity) || quantity < 1) throw new Error('Invalid quantity');
+      if (quantity > product.stock) throw new Error(product.name + ' has only ' + product.stock + ' left');
+
+      const unitPrice = Number(product.price);
+      total += unitPrice * quantity;
+      normalized.push({ productId: product.id, quantity, unitPrice });
+    }
+
     const order = await client.query(
       'INSERT INTO orders(user_id,total,payment_method,shipping_address,status) VALUES($1,$2,$3,$4,$5) RETURNING *',
-      [req.user.userId, total, payment_method, shipping_address, 'pending']
+      [req.user.userId, total, payment_method, shipping_address.trim(), 'pending']
     );
-    for (const item of items) {
+
+    for (const item of normalized) {
       await client.query(
         'INSERT INTO order_items(order_id,product_id,quantity,unit_price) VALUES($1,$2,$3,$4)',
-        [order.rows[0].id, item.product_id, item.quantity, item.unit_price]
+        [order.rows[0].id, item.productId, item.quantity, item.unitPrice]
+      );
+      await client.query(
+        'UPDATE products SET stock = stock - $1 WHERE id = $2',
+        [item.quantity, item.productId]
       );
     }
+
     if (payment_method !== 'cod') {
       await client.query(
         'INSERT INTO payment_transactions(order_id,user_id,method,amount,merchant_number,status) VALUES($1,$2,$3,$4,$5,$6)',
         [order.rows[0].id, req.user.userId, payment_method, total, MERCHANT_NUMBER, 'awaiting_customer_payment']
       );
     }
+
     await client.query('COMMIT');
-    res.status(201).json({ ...order.rows[0], merchant_number: MERCHANT_NUMBER, whatsapp: '03420954886' });
+    res.status(201).json({
+      ...order.rows[0],
+      merchant_number: MERCHANT_NUMBER,
+      whatsapp: '03420954886',
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error(error);
-    res.status(500).json({ error: 'Could not create order' });
+    res.status(400).json({ error: error.message || 'Could not create order' });
   } finally {
     client.release();
   }
@@ -144,6 +184,14 @@ app.post('/api/payments/create', auth, async (req, res) => {
   } catch (_) {
     res.status(500).json({ error: 'Could not create payment transaction' });
   }
+});
+
+app.get('/api/payments/history', auth, async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT * FROM payment_transactions WHERE user_id=$1 ORDER BY created_at DESC',
+    [req.user.userId]
+  );
+  res.json(rows);
 });
 
 app.get('/api/orders/:id', auth, async (req, res) => {

@@ -92,14 +92,61 @@ class _StoreState extends State<Store>{
    ]))),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('CONTINUE')),FilledButton(onPressed:(){Navigator.pop(d);checkout();},child:const Text('CHECKOUT'))]);});
  }
 
- void details(Product p)=>showDialog(context:context,builder:(d)=>Dialog(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:850,maxHeight:750),child:SingleChildScrollView(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-  Image.network(p.image,height:390,width:850,fit:BoxFit.cover),Padding(padding:const EdgeInsets.all(28),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-   Text(p.category.toUpperCase(),style:const TextStyle(color:Color(0xFF9A763C),fontWeight:FontWeight.bold,letterSpacing:2)),const SizedBox(height:8),Text(p.name,style:const TextStyle(fontSize:32,fontWeight:FontWeight.w900)),
-   const SizedBox(height:10),Row(children:[Text('Rs. '+p.price.toStringAsFixed(0),style:const TextStyle(fontSize:25,fontWeight:FontWeight.w900)),const SizedBox(width:12),Text('Rs. '+p.oldPrice.toStringAsFixed(0),style:const TextStyle(color:Colors.grey,decoration:TextDecoration.lineThrough)),const SizedBox(width:12),Text(p.discount.toString()+'% OFF')]),
-   const SizedBox(height:18),Text(p.description,style:const TextStyle(color:Colors.black54,height:1.6)),const SizedBox(height:15),Text('Stock: '+p.stock.toString(),style:const TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:20),
-   SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:p.stock<1?null:(){Navigator.pop(d);add(p);},icon:const Icon(Icons.shopping_bag_outlined),label:const Text('ADD TO BAG')))
-  ]))
- ]))));
+ void details(Product p) {
+  showDialog(
+    context: context,
+    builder: (d) => Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 850, maxHeight: 750),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Image.network(p.image, height: 390, width: 850, fit: BoxFit.cover),
+              Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(p.category.toUpperCase(), style: const TextStyle(color: Color(0xFF9A763C), fontWeight: FontWeight.bold, letterSpacing: 2)),
+                    const SizedBox(height: 8),
+                    Text(p.name, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Text('Rs. ${p.price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900)),
+                        const SizedBox(width: 12),
+                        Text('Rs. ${p.oldPrice.toStringAsFixed(0)}', style: const TextStyle(color: Colors.grey, decoration: TextDecoration.lineThrough)),
+                        const SizedBox(width: 12),
+                        Text('${p.discount}% OFF'),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Text(p.description, style: const TextStyle(color: Colors.black54, height: 1.6)),
+                    const SizedBox(height: 15),
+                    Text('Stock: ${p.stock}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: p.stock < 1 ? null : () {
+                          Navigator.pop(d);
+                          add(p);
+                        },
+                        icon: const Icon(Icons.shopping_bag_outlined),
+                        label: const Text('ADD TO BAG'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
 
  Widget hero()=>SizedBox(height:590,child:Stack(fit:StackFit.expand,children:[
   Image.network('https://images.unsplash.com/photo-1495555961986-6d4c1ecb7be3?auto=format&fit=crop&w=1900&q=90',fit:BoxFit.cover),Container(color:Colors.black54),
